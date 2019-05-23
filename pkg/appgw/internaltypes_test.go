@@ -7,16 +7,12 @@ package appgw
 
 import (
 	"fmt"
-	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
-func TestStringKeyGenerators(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Test setting up App Gateway health probes")
-}
+// appgw_suite_test.go launches these Ginkgo tests
 
 var _ = Describe("Test string key generators", func() {
 	veryLongString := "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZAB"
@@ -205,6 +201,14 @@ var _ = Describe("Test string key generators", func() {
 		It("should fail for non alphanumeric strings", func() {
 			// ensure this is setup correctly
 			Expect(agPrefixValidator.MatchString("omega----Ω")).To(BeFalse())
+		})
+	})
+
+	Context("test whether getResourceKey works correctly", func() {
+		It("should construct correct key", func() {
+			actual := getResourceKey(testFixturesNamespace, testFixturesName)
+			expected := testFixturesNamespace + "/" + testFixturesName
+			Expect(actual).To(Equal(expected))
 		})
 	})
 })
