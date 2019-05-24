@@ -20,7 +20,6 @@ import (
 
 func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](*v1beta1.Ingress)) (ConfigBuilder, error) {
 	backendIDs := make(map[backendIdentifier]interface{})
-	serviceBackendPairsMap := make(map[backendIdentifier]map[serviceBackendPortPair]interface{})
 
 	for _, ingress := range ingressList {
 		defIngressBackend := ingress.Spec.Backend
@@ -41,6 +40,7 @@ func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](
 	}
 
 	unresolvedBackendID := make([]backendIdentifier, 0)
+	serviceBackendPairsMap := make(map[backendIdentifier]map[serviceBackendPortPair]interface{})
 	for backendID := range backendIDs {
 		builder.process(backendID, &unresolvedBackendID, &serviceBackendPairsMap)
 	}
@@ -115,9 +115,8 @@ func (builder *appGwConfigBuilder) process(backendID backendIdentifier, unresolv
 	if _, ok := (*serviceBackendPairsMap)[backendID]; !ok {
 		(*serviceBackendPairsMap)[backendID] = make(map[serviceBackendPortPair]interface{})
 	}
-	for beID := range (*serviceBackendPairsMap)[backendID] {
-		resolvedBackendPorts[beID] = nil
-
+	for beID := range resolvedBackendPorts {
+		(*serviceBackendPairsMap)[backendID][beID] = nil
 	}
 }
 
@@ -139,9 +138,10 @@ func (builder *appGwConfigBuilder) secondPart(unresolvedBackendID *[]backendIden
 			return builder, errors.New("more than one service-backend port binding is not allowed")
 		}
 
+		// At this point there will be only one pair
 		var uniquePair serviceBackendPortPair
-		for uniquePair = range serviceBackendPairs {
-			// what the hack is going on here
+		for k := range serviceBackendPairs {
+			uniquePair = k
 		}
 
 		builder.serviceBackendPairMap[backendID] = uniquePair

@@ -11,12 +11,7 @@ type UnorderedSet interface {
 	Insert(item interface{})
 	Erase(item interface{})
 	Contains(item interface{}) bool
-	Size() int
 	Clear()
-	IsEmpty() bool
-	ForEach(func(interface{}))
-	Union(s UnorderedSet) UnorderedSet
-	Intersect(s UnorderedSet) UnorderedSet
 }
 
 type unorderedSet struct {
@@ -49,32 +44,7 @@ func (s *unorderedSet) Contains(item interface{}) bool {
 	return ok
 }
 
-// Size computes the number of items in the set.
-func (s *unorderedSet) Size() int {
-	return len(s.v)
-}
-
 // Clear deletes all the items in the set.
 func (s *unorderedSet) Clear() {
 	s.v = make(map[interface{}]struct{})
-}
-
-// IsEmpty checks if the set is empty.
-func (s *unorderedSet) IsEmpty() bool {
-	return len(s.v) == 0
-}
-
-// ForEach applies function to each member of the set once.
-func (s *unorderedSet) ForEach(f func(interface{})) {
-	for vv := range s.v {
-		f(vv)
-	}
-}
-
-// Union computes the union of the two sets as return value.
-func (s *unorderedSet) Union(set UnorderedSet) UnorderedSet {
-	s.ForEach(func(vv interface{}) {
-		set.Insert(vv)
-	})
-	return set
 }

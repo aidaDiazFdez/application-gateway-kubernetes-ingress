@@ -21,43 +21,6 @@ var _ = Describe("Utils", func() {
 			testSet.Insert(4)
 			testSet.Insert(4)
 		})
-
-		Context("Inserting non-unique elements", func() {
-			It("Should only store unique elements", func() {
-				Expect(testSet.Size()).To(Equal(4))
-			})
-		})
-
-		Context("Erasing an element", func() {
-			It("Should remove the element", func() {
-				testSet.Erase(4)
-				Expect(testSet.Contains(4)).To(BeFalse())
-				Expect(testSet.Size()).To(Equal(3))
-			})
-		})
-
-		Context("Clearing the unordered set", func() {
-			It("Should erase all elements", func() {
-				testSet.Clear()
-				Expect(testSet.Size()).To(Equal(0))
-				Expect(testSet.IsEmpty()).To(BeTrue())
-			})
-		})
-
-		Context("Testing union of sets", func() {
-			set := utils.NewUnorderedSet()
-			set.Insert(5)
-			set.Insert(6)
-			set.Insert(7)
-
-			It("Should contain union of both sets", func() {
-				uSet := testSet.Union(set)
-				Expect(uSet.Size()).To(Equal(7))
-				Expect(uSet.Contains(5)).To(BeTrue())
-				Expect(uSet.Contains(6)).To(BeTrue())
-				Expect(uSet.Contains(7)).To(BeTrue())
-			})
-		})
 	})
 
 	Describe("Testing `utils` helpers", func() {
