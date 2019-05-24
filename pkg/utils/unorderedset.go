@@ -17,7 +17,6 @@ type UnorderedSet interface {
 	ForEach(func(interface{}))
 	Union(s UnorderedSet) UnorderedSet
 	Intersect(s UnorderedSet) UnorderedSet
-	ToSlice() []interface{}
 }
 
 type unorderedSet struct {
@@ -88,12 +87,4 @@ func (s *unorderedSet) Intersect(set UnorderedSet) UnorderedSet {
 		}
 	})
 	return set
-}
-
-func (s *unorderedSet) ToSlice() []interface{} {
-	keys := make([]interface{}, 0, len(s.v))
-	for elem := range s.v {
-		keys = append(keys, elem)
-	}
-	return keys
 }

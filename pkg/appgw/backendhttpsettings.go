@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
-	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/utils"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-12-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
@@ -21,7 +20,7 @@ import (
 
 func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](*v1beta1.Ingress)) (ConfigBuilder, error) {
 	backendIDs := make(map[backendIdentifier]interface{})
-	serviceBackendPairsMap := make(map[backendIdentifier](utils.UnorderedSet))
+	serviceBackendPairsMap := make(map[backendIdentifier]map[serviceBackendPortPair]interface{})
 
 	for _, ingress := range ingressList {
 		defIngressBackend := ingress.Spec.Backend
