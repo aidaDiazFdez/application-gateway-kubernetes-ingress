@@ -78,13 +78,3 @@ func (s *unorderedSet) Union(set UnorderedSet) UnorderedSet {
 	})
 	return set
 }
-
-// Intersect computes the intersection of the two sets as return value.
-func (s *unorderedSet) Intersect(set UnorderedSet) UnorderedSet {
-	set.ForEach(func(vv interface{}) {
-		if !s.Contains(vv) {
-			set.Erase(vv)
-		}
-	})
-	return set
-}
