@@ -90,14 +90,12 @@ func (builder *appGwConfigBuilder) process(backendID backendIdentifier, unresolv
 						// if service port is defined by name, need to resolve
 						targetPortName := sp.TargetPort.StrVal
 						glog.V(1).Infof("resolving port name %s", targetPortName)
-						targetPortsResolved := builder.resolvePortName(targetPortName, &backendID)
-						targetPortsResolved.ForEach(func(targetPortInterface interface{}) {
-							targetPort := targetPortInterface.(int32)
+						for targetPort := range builder.resolvePortName(targetPortName, &backendID) {
 							resolvedBackendPorts.Insert(serviceBackendPortPair{
 								ServicePort: sp.Port,
 								BackendPort: targetPort,
 							})
-						})
+						}
 					}
 				}
 				break
