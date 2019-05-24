@@ -20,13 +20,13 @@ import (
 )
 
 func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](*v1beta1.Ingress)) (ConfigBuilder, error) {
-	backendIDs := utils.NewUnorderedSet()
+	backendIDs := make(map[backendIdentifier]interface{})
 	serviceBackendPairsMap := make(map[backendIdentifier](utils.UnorderedSet))
 
 	for _, ingress := range ingressList {
 		defIngressBackend := ingress.Spec.Backend
 		if defIngressBackend != nil {
-			backendIDs.Insert(generateBackendID(ingress, nil, nil, defIngressBackend))
+			backendIDs[generateBackendID(ingress, nil, nil, defIngressBackend)] = nil
 		}
 		for ruleIdx := range ingress.Spec.Rules {
 			rule := &ingress.Spec.Rules[ruleIdx]
@@ -36,82 +36,89 @@ func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](
 			}
 			for pathIdx := range rule.HTTP.Paths {
 				path := &rule.HTTP.Paths[pathIdx]
-				backendIDs.Insert(generateBackendID(ingress, rule, path, &path.Backend))
+				backendIDs[generateBackendID(ingress, rule, path, &path.Backend)] = nil
 			}
 		}
 	}
 
 	unresolvedBackendID := make([]backendIdentifier, 0)
-	backendIDs.ForEach(func(backendIDInterface interface{}) {
-		backendID := backendIDInterface.(backendIdentifier)
-		resolvedBackendPorts := utils.NewUnorderedSet()
+	for backendID := range backendIDs {
+		builder.process(backendID, &unresolvedBackendID, &serviceBackendPairsMap)
+	}
 
-		service := builder.k8sContext.GetService(backendID.serviceKey())
-		if service == nil {
-			glog.V(1).Infof("unable to get the service [%s]", backendID.serviceKey())
-			resolvedBackendPorts.Insert(serviceBackendPortPair{
-				ServicePort: backendID.Backend.ServicePort.IntVal,
-				BackendPort: backendID.Backend.ServicePort.IntVal,
-			})
-		} else {
-			for _, sp := range service.Spec.Ports {
-				// find the backend port number
-				// check if any service ports matches the specified ports
-				if sp.Protocol != v1.ProtocolTCP {
-					// ignore UDP ports
-					continue
-				}
-				if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
-					sp.Name == backendID.Backend.ServicePort.String() ||
-					sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
-					// matched a service port with a port from the service
+	return builder.secondPart(&unresolvedBackendID, &serviceBackendPairsMap)
+}
 
-					if sp.TargetPort.String() == "" {
-						// targetPort is not defined, by default targetPort == port
+func (builder *appGwConfigBuilder) process(backendID backendIdentifier, unresolvedBackendID *[]backendIdentifier, serviceBackendPairsMap *map[backendIdentifier]utils.UnorderedSet) {
+	resolvedBackendPorts := utils.NewUnorderedSet()
+
+	service := builder.k8sContext.GetService(backendID.serviceKey())
+	if service == nil {
+		glog.V(1).Infof("unable to get the service [%s]", backendID.serviceKey())
+		resolvedBackendPorts.Insert(serviceBackendPortPair{
+			ServicePort: backendID.Backend.ServicePort.IntVal,
+			BackendPort: backendID.Backend.ServicePort.IntVal,
+		})
+	} else {
+		for _, sp := range service.Spec.Ports {
+			// find the backend port number
+			// check if any service ports matches the specified ports
+			if sp.Protocol != v1.ProtocolTCP {
+				// ignore UDP ports
+				continue
+			}
+			if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
+				sp.Name == backendID.Backend.ServicePort.String() ||
+				sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
+				// matched a service port with a port from the service
+
+				if sp.TargetPort.String() == "" {
+					// targetPort is not defined, by default targetPort == port
+					resolvedBackendPorts.Insert(serviceBackendPortPair{
+						ServicePort: sp.Port,
+						BackendPort: sp.Port,
+					})
+				} else {
+					// target port is defined as name or port number
+					if sp.TargetPort.Type == intstr.Int {
+						// port is defined as port number
 						resolvedBackendPorts.Insert(serviceBackendPortPair{
 							ServicePort: sp.Port,
-							BackendPort: sp.Port,
+							BackendPort: sp.TargetPort.IntVal,
 						})
 					} else {
-						// target port is defined as name or port number
-						if sp.TargetPort.Type == intstr.Int {
-							// port is defined as port number
+						// if service port is defined by name, need to resolve
+						targetPortName := sp.TargetPort.StrVal
+						glog.V(1).Infof("resolving port name %s", targetPortName)
+						targetPortsResolved := builder.resolvePortName(targetPortName, &backendID)
+						targetPortsResolved.ForEach(func(targetPortInterface interface{}) {
+							targetPort := targetPortInterface.(int32)
 							resolvedBackendPorts.Insert(serviceBackendPortPair{
 								ServicePort: sp.Port,
-								BackendPort: sp.TargetPort.IntVal,
+								BackendPort: targetPort,
 							})
-						} else {
-							// if service port is defined by name, need to resolve
-							targetPortName := sp.TargetPort.StrVal
-							glog.V(1).Infof("resolving port name %s", targetPortName)
-							targetPortsResolved := builder.resolvePortName(targetPortName, &backendID)
-							targetPortsResolved.ForEach(func(targetPortInterface interface{}) {
-								targetPort := targetPortInterface.(int32)
-								resolvedBackendPorts.Insert(serviceBackendPortPair{
-									ServicePort: sp.Port,
-									BackendPort: targetPort,
-								})
-							})
-						}
+						})
 					}
-					break
 				}
+				break
 			}
 		}
+	}
 
-		if resolvedBackendPorts.Size() == 0 {
-			glog.V(1).Infof("unable to resolve any backend port for service [%s]", backendID.serviceKey())
-			unresolvedBackendID = append(unresolvedBackendID, backendID)
-			return
-		}
+	if resolvedBackendPorts.Size() == 0 {
+		glog.V(1).Infof("unable to resolve any backend port for service [%s]", backendID.serviceKey())
+		*unresolvedBackendID = append(*unresolvedBackendID, backendID)
+		return
+	}
 
-		if serviceBackendPairsMap[backendID] == nil {
-			serviceBackendPairsMap[backendID] = utils.NewUnorderedSet()
-		}
-		serviceBackendPairsMap[backendID] = serviceBackendPairsMap[backendID].Union(resolvedBackendPorts)
-	})
+	if (*serviceBackendPairsMap)[backendID] == nil {
+		(*serviceBackendPairsMap)[backendID] = utils.NewUnorderedSet()
+	}
+	(*serviceBackendPairsMap)[backendID] = (*serviceBackendPairsMap)[backendID].Union(resolvedBackendPorts)
+}
 
-	if len(unresolvedBackendID) > 0 {
+func (builder *appGwConfigBuilder) secondPart(unresolvedBackendID *[]backendIdentifier, serviceBackendPairsMap *map[backendIdentifier]utils.UnorderedSet) (ConfigBuilder, error) {
+	if len(*unresolvedBackendID) > 0 {
 		return builder, errors.New("unable to resolve backend port for some services")
 	}
 
@@ -120,7 +127,7 @@ func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](
 	httpSettingsCollection = append(httpSettingsCollection, defaultBackendHTTPSettings(probeID))
 
 	// enforce single pair relationship between service port and backend port
-	for backendID, serviceBackendPairs := range serviceBackendPairsMap {
+	for backendID, serviceBackendPairs := range *serviceBackendPairsMap {
 		if serviceBackendPairs.Size() > 1 {
 			// more than one possible backend port exposed through ingress
 			glog.Warningf("service:port [%s:%s] has more than one service-backend port binding",
