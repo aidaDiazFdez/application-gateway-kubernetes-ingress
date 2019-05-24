@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
-	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/utils"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-12-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
@@ -19,13 +18,13 @@ import (
 )
 
 func (builder *appGwConfigBuilder) HealthProbesCollection(ingressList [](*v1beta1.Ingress)) (ConfigBuilder, error) {
-	backendIDs := utils.NewUnorderedSet()
+	backendIDs := make(map[backendIdentifier]interface{})
 	for _, ingress := range ingressList {
 
 		glog.Infof("[health-probes] Configuring health probes for ingress: '%s'", ingress.Name)
 		if ingress.Spec.Backend != nil {
 			glog.Info("[health-probes] Ingress spec has no backend. Adding a default.")
-			backendIDs.Insert(generateBackendID(ingress, nil, nil, ingress.Spec.Backend))
+			backendIDs[generateBackendID(ingress, nil, nil, ingress.Spec.Backend)] = nil
 		}
 
 		for ruleIdx := range ingress.Spec.Rules {
@@ -39,7 +38,7 @@ func (builder *appGwConfigBuilder) HealthProbesCollection(ingressList [](*v1beta
 			for pathIdx := range rule.HTTP.Paths {
 				path := &rule.HTTP.Paths[pathIdx]
 				glog.Infof("[health-probes] Working on path #%d: '%s'", pathIdx+1, path.Path)
-				backendIDs.Insert(generateBackendID(ingress, rule, path, &path.Backend))
+				backendIDs[generateBackendID(ingress, rule, path, &path.Backend)] = nil
 			}
 		}
 	}
@@ -50,8 +49,7 @@ func (builder *appGwConfigBuilder) HealthProbesCollection(ingressList [](*v1beta
 	glog.Infof("[health-probes] Adding default probe: '%s'", *defaultProbe.Name)
 	healthProbeCollection = append(healthProbeCollection, defaultProbe)
 
-	for _, backendIDInterface := range backendIDs.ToSlice() {
-		backendID := backendIDInterface.(backendIdentifier)
+	for backendID := range backendIDs {
 		probe := builder.generateHealthProbe(backendID)
 
 		if probe != nil {
