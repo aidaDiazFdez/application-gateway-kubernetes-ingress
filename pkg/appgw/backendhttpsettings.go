@@ -51,72 +51,74 @@ func (builder *appGwConfigBuilder) BackendHTTPSettingsCollection(ingressList [](
 func (builder *appGwConfigBuilder) process(backendID backendIdentifier, unresolvedBackendID *[]backendIdentifier, serviceBackendPairsMap *map[backendIdentifier]map[serviceBackendPortPair]interface{}) {
 	resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
 
-	service := builder.k8sContext.GetService(backendID.serviceKey())
-	if service == nil {
-		glog.V(1).Infof("unable to get the service [%s]", backendID.serviceKey())
-		pair := serviceBackendPortPair{
-			ServicePort: backendID.Backend.ServicePort.IntVal,
-			BackendPort: backendID.Backend.ServicePort.IntVal,
-		}
-		resolvedBackendPorts[pair] = nil
-	} else {
-		for _, sp := range service.Spec.Ports {
-			// find the backend port number
-			// check if any service ports matches the specified ports
-			if sp.Protocol != v1.ProtocolTCP {
-				// ignore UDP ports
-				continue
+	{
+		service := builder.k8sContext.GetService(backendID.serviceKey())
+		if service == nil {
+			glog.V(1).Infof("unable to get the service [%s]", backendID.serviceKey())
+			pair := serviceBackendPortPair{
+				ServicePort: backendID.Backend.ServicePort.IntVal,
+				BackendPort: backendID.Backend.ServicePort.IntVal,
 			}
-			if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
-				sp.Name == backendID.Backend.ServicePort.String() ||
-				sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
-				// matched a service port with a port from the service
+			resolvedBackendPorts[pair] = nil
+		} else {
+			for _, sp := range service.Spec.Ports {
+				// find the backend port number
+				// check if any service ports matches the specified ports
+				if sp.Protocol != v1.ProtocolTCP {
+					// ignore UDP ports
+					continue
+				}
+				if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
+					sp.Name == backendID.Backend.ServicePort.String() ||
+					sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
+					// matched a service port with a port from the service
 
-				if sp.TargetPort.String() == "" {
-					// targetPort is not defined, by default targetPort == port
-					pair := serviceBackendPortPair{
-						ServicePort: sp.Port,
-						BackendPort: sp.Port,
-					}
-					resolvedBackendPorts[pair] = nil
-				} else {
-					// target port is defined as name or port number
-					if sp.TargetPort.Type == intstr.Int {
-						// port is defined as port number
+					if sp.TargetPort.String() == "" {
+						// targetPort is not defined, by default targetPort == port
 						pair := serviceBackendPortPair{
 							ServicePort: sp.Port,
-							BackendPort: sp.TargetPort.IntVal,
+							BackendPort: sp.Port,
 						}
 						resolvedBackendPorts[pair] = nil
 					} else {
-						// if service port is defined by name, need to resolve
-						targetPortName := sp.TargetPort.StrVal
-						glog.V(1).Infof("resolving port name %s", targetPortName)
-						for targetPort := range builder.resolvePortName(targetPortName, &backendID) {
+						// target port is defined as name or port number
+						if sp.TargetPort.Type == intstr.Int {
+							// port is defined as port number
 							pair := serviceBackendPortPair{
 								ServicePort: sp.Port,
-								BackendPort: targetPort,
+								BackendPort: sp.TargetPort.IntVal,
 							}
 							resolvedBackendPorts[pair] = nil
+						} else {
+							// if service port is defined by name, need to resolve
+							targetPortName := sp.TargetPort.StrVal
+							glog.V(1).Infof("resolving port name %s", targetPortName)
+							for targetPort := range builder.resolvePortName(targetPortName, &backendID) {
+								pair := serviceBackendPortPair{
+									ServicePort: sp.Port,
+									BackendPort: targetPort,
+								}
+								resolvedBackendPorts[pair] = nil
+							}
 						}
 					}
+					break
 				}
-				break
 			}
 		}
-	}
 
-	if len(resolvedBackendPorts) == 0 {
-		glog.V(1).Infof("unable to resolve any backend port for service [%s]", backendID.serviceKey())
-		*unresolvedBackendID = append(*unresolvedBackendID, backendID)
-		return
-	}
+		if len(resolvedBackendPorts) == 0 {
+			glog.V(1).Infof("unable to resolve any backend port for service [%s]", backendID.serviceKey())
+			*unresolvedBackendID = append(*unresolvedBackendID, backendID)
+			return
+		}
 
-	if _, ok := (*serviceBackendPairsMap)[backendID]; !ok {
-		(*serviceBackendPairsMap)[backendID] = make(map[serviceBackendPortPair]interface{})
-	}
-	for beID := range resolvedBackendPorts {
-		(*serviceBackendPairsMap)[backendID][beID] = nil
+		if _, ok := (*serviceBackendPairsMap)[backendID]; !ok {
+			(*serviceBackendPairsMap)[backendID] = make(map[serviceBackendPortPair]interface{})
+		}
+		for beID := range resolvedBackendPorts {
+			(*serviceBackendPairsMap)[backendID][beID] = nil
+		}
 	}
 }
 
